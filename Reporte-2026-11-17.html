@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cambios Firewalls 17-11</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: informe de una columna; resumen arriba, bitácora filtrable por equipo, luego hallazgos y pendientes */
+:root{
+  color-scheme: light;
+  --bg:#f5f7f8; --panel:#ffffff; --fg:#17232b; --muted:#5a6b76; --line:#d8e0e5;
+  --accent:#0f6e7a; --accent-soft:#e2f1f3;
+  --ok:#2f7d4f; --ok-soft:#e3f2e8;
+  --warn:#9a6500; --warn-soft:#fbf0d9;
+  --crit:#b3261e; --crit-soft:#fbe4e2;
+  --info:#3c5ea8; --info-soft:#e6ecf8;
+  --font-body:"IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  --font-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f171c; --panel:#162229; --fg:#e3eaee; --muted:#93a5b0; --line:#2a3a44;
+  --accent:#4fb8c4; --accent-soft:#163a40;
+  --ok:#6cc48f; --ok-soft:#173826; --warn:#e0b04f; --warn-soft:#3a2e12;
+  --crit:#f08a82; --crit-soft:#41201d; --info:#8fa9e6; --info-soft:#1f2a45; color-scheme: dark }}
+:root[data-theme="dark"]{
+  --bg:#0f171c; --panel:#162229; --fg:#e3eaee; --muted:#93a5b0; --line:#2a3a44;
+  --accent:#4fb8c4; --accent-soft:#163a40;
+  --ok:#6cc48f; --ok-soft:#173826; --warn:#e0b04f; --warn-soft:#3a2e12;
+  --crit:#f08a82; --crit-soft:#41201d; --info:#8fa9e6; --info-soft:#1f2a45; color-scheme: dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-body)}
+.wrap{max-width:1120px;margin:0 auto;padding-block:32px 64px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:1.9rem;font-weight:700}
+h2{font-size:1.3rem;font-weight:600;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h3{font-size:1.02rem;font-weight:600}
+p{margin:0;max-width:72ch}
+code,.mono{font-family:var(--font-mono);font-size:.86em}
+code{background:var(--accent-soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.eyebrow{font:500 .75rem var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.muted{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-direction:column;gap:10px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 20px;color:var(--muted);font-size:.9rem}
+.meta b{color:var(--fg);font-weight:500}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kpi .n{font:600 1.8rem var(--font-mono);font-variant-numeric:tabular-nums}
+.kpi .l{font-size:.85rem;color:var(--muted)}
+.kpi.k-ok .n{color:var(--ok)} .kpi.k-warn .n{color:var(--warn)} .kpi.k-crit .n{color:var(--crit)} .kpi.k-info .n{color:var(--info)}
+
+.callout{border-left:3px solid var(--warn);background:var(--warn-soft);padding:12px 16px;border-radius:0 6px 6px 0;display:flex;flex-direction:column;gap:6px}
+.callout.crit{border-color:var(--crit);background:var(--crit-soft)}
+
+.fwmap{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto}
+.fwgrid{display:grid;grid-template-columns:repeat(3,minmax(200px,1fr));gap:10px;min-width:640px}
+.fw{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;font-size:.86rem}
+.fw .name{font:600 .95rem var(--font-mono)}
+.fw.down{border-color:var(--crit);background:var(--crit-soft)}
+.fw.nodata{border-style:dashed}
+.fw .st{font-size:.78rem;font-weight:600}
+.fw.down .st{color:var(--crit)} .fw.up .st{color:var(--ok)} .fw.nodata .st{color:var(--muted)}
+
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filters span{font-size:.85rem;color:var(--muted);margin-right:4px}
+.chip{font:500 .82rem var(--font-mono);border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:5px 11px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font:600 .72rem var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--bg);position:sticky;top:0}
+tr:last-child td{border-bottom:0}
+td.date{font-family:var(--font-mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.fwc{font:600 .85rem var(--font-mono);white-space:nowrap}
+.tl{min-width:860px}
+
+.tag{display:inline-block;font:600 .7rem var(--font-mono);padding:2px 8px;border-radius:4px;white-space:nowrap;letter-spacing:.02em}
+.t-api{background:var(--ok-soft);color:var(--ok)}
+.t-gui{background:var(--info-soft);color:var(--info)}
+.t-3ro{background:var(--warn-soft);color:var(--warn)}
+.t-det{background:var(--crit-soft);color:var(--crit)}
+.t-loc{background:var(--accent-soft);color:var(--accent)}
+.sev{display:inline-block;font:600 .7rem var(--font-mono);padding:2px 8px;border-radius:4px;white-space:nowrap}
+.s-c{background:var(--crit-soft);color:var(--crit)} .s-a{background:var(--warn-soft);color:var(--warn)}
+.s-m{background:var(--info-soft);color:var(--info)}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.82rem;color:var(--muted)}
+.legend div{display:flex;gap:6px;align-items:center}
+
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+ul.list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+ul.check{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+ul.check li{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start}
+ul.check li::before{content:"";width:12px;height:12px;border:1.5px solid var(--muted);border-radius:3px;margin-top:5px}
+footer{font-size:.82rem;color:var(--muted);border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:4px}
+@media (max-width:520px){ h1{font-size:1.5rem} }
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+.t-ver{background:var(--crit-soft);color:var(--crit);outline:1px dashed var(--crit)}
+.window{font-size:.78rem;color:var(--muted);display:block;margin-top:2px;font-family:var(--font-body)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Sándwich MEYAJ · Sophos SFOS · Reporte 2</div>
+  <h1>Cambios en firewalls desde el reporte del 11-11-2026</h1>
+  <p class="muted">Todo lo que cambió en los firewalls (y en el stack de switches) desde el corte del reporte anterior hasta hoy: lo que hicimos nosotros, lo que hicieron terceros y lo que se encontró al comparar los respaldos de hoy contra los anteriores.</p>
+  <div class="meta">
+    <div>Periodo <b>11-11-2026 15:26 → 17-11-2026 19:08</b></div>
+    <div>Reporte anterior <b>Reporte-2026-11-11.html (11-11 15:26)</b></div>
+    <div>Fuentes <b>Respaldos API de hoy, notas de caso, capturas</b></div>
+  </div>
+</header>
+
+<section>
+  <h2>Resumen</h2>
+  <div class="kpis">
+    <div class="kpi k-ok"><div class="n">0</div><div class="l">Cambios aplicados por nosotros en firewalls</div></div>
+    <div class="kpi k-warn"><div class="n">15</div><div class="l">Cambios de terceros detectados (FW1, FW2, FW3)</div></div>
+    <div class="kpi k-info"><div class="n">2</div><div class="l">Firewalls sin cambios (FW2M, FW3M)</div></div>
+    <div class="kpi k-crit"><div class="n">1</div><div class="l">Cambio en switch por verificar</div></div>
+  </div>
+  <div class="callout">
+    <h3>FW3 recuperó la gestión</h3>
+    <p>Hoy a las 18:52, <code>10.10.5.252:4444</code> responde y la API funciona. En el respaldo apareció una ruta estática nueva <code>10.10.81.0/24 → 10.10.5.2</code> por Port1. Es la solución que se propuso el 11-11 para el problema de retorno. La agregó un tercero; nosotros no la aplicamos.</p>
+  </div>
+  <div class="callout crit">
+    <h3>Lo que hay que revisar primero</h3>
+    <p>En FW3 hay una ruta SD-WAN nueva, <code>SALIDAg</code>, sin origen ni interfaz de entrada, ubicada antes de <code>SALIDA</code>. En FW2, la regla <code>Carteras_Especiales_Coordinador</code> subió a la posición #14, antes de las reglas BMX. Su web policy ahora permite la categoría amplia <code>Information Technology</code>.</p>
+  </div>
+  <p class="muted">FW2 y FW3 no se respaldaron entre el 05-11 y hoy (FW3 estuvo sin gestión desde el 11-11). Por eso sus cambios se ubican en la ventana <b>05-11 → 17-11 18:52</b>: la API no da la hora exacta ni quién hizo el cambio. Ninguno aparece en el reporte anterior.</p>
+</section>
+
+<section>
+  <h2>Estado de los equipos al 17-11-2026 19:08</h2>
+  <div class="fwmap">
+    <div class="fwgrid">
+      <div class="fw up"><span class="name">FW1 · 10.10.5.250</span><span>Borde Servidores</span><span class="st">Acceso OK · 1 cambio de tercero</span></div>
+      <div class="fw up"><span class="name">FW2 · 10.10.5.251</span><span>Borde Milla (.103 / .106)</span><span class="st">Acceso OK · cambios de terceros</span></div>
+      <div class="fw up"><span class="name">FW3 · 10.10.5.252</span><span>Borde Banamex (.104)</span><span class="st">Gestión recuperada · cambios de terceros</span></div>
+      <div class="fw nodata"><span class="name">FW1M · ¿10.10.5.4?</span><span>Interno Servidores</span><span class="st">Sin acceso · no revisado</span></div>
+      <div class="fw up"><span class="name">FW2M · 10.10.5.2</span><span>Interno Milla</span><span class="st">Acceso OK · sin cambios</span></div>
+      <div class="fw up"><span class="name">FW3M · 10.10.5.3</span><span>Interno Banamex (.104)</span><span class="st">Acceso OK · sin cambios desde 11-11</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Bitácora de cambios con fecha y hora</h2>
+  <div class="legend">
+    <div><span class="tag t-3ro">Tercero</span> detectado comparando respaldos</div>
+    <div><span class="tag t-det">Detectado</span> estado encontrado en vivo</div>
+    <div><span class="tag t-ver">Verificar</span> evidencia contradictoria</div>
+    <div><span class="tag t-loc">Lectura</span> respaldo o consulta nuestra, sin cambios en el equipo</div>
+  </div>
+  <div class="filters" role="group" aria-label="Filtrar por equipo">
+    <span>Equipo:</span>
+    <button class="chip" data-f="all" aria-pressed="true">Todos</button>
+    <button class="chip" data-f="FW1" aria-pressed="false">FW1</button>
+    <button class="chip" data-f="FW2" aria-pressed="false">FW2</button>
+    <button class="chip" data-f="FW3" aria-pressed="false">FW3</button>
+    <button class="chip" data-f="FW2M" aria-pressed="false">FW2M</button>
+    <button class="chip" data-f="FW3M" aria-pressed="false">FW3M</button>
+    <button class="chip" data-f="Otros" aria-pressed="false">Switch / otros</button>
+  </div>
+  <div class="tbl">
+  <table class="tl" id="timeline">
+    <thead><tr><th>Fecha y hora</th><th>Equipo</th><th>Origen</th><th>Cambio</th><th>Efecto / estado</th></tr></thead>
+    <tbody>
+      <tr data-fw="Otros"><td class="date">11-11 20:27–20:33</td><td class="fwc">Stack Cisco</td><td><span class="tag t-loc">Lectura</span></td>
+        <td>Consultas desde SIEM-MILLA (172.168.0.20) al stack <code>SW2-MEYAJ</code> (172.168.0.2). <code>172.168.0.3</code> no responde ("Host de destino inaccesible").</td>
+        <td>Solo diagnóstico. Sin cambios.</td></tr>
+
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52<span class="window">probablemente después del 11-11</span></td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Ruta estática nueva <code>10.10.81.0/24 → 10.10.5.2</code> por Port1 (antes había 3 rutas; ahora 4).</td>
+        <td>Arregla el retorno de la gestión: <b>FW3 vuelve a responder</b> en 4444. Era la solución propuesta el 11-11.</td></tr>
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52</td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Ruta SD-WAN nueva <code>SALIDAg</code> en la posición 5, antes de <code>SALIDA</code>: sin origen ni interfaz de entrada, gateways <code>WAN2_REDIT_P2</code> / <code>WAN1_AXTEL_E2</code>. <code>SALIDA</code> sí limita a Port2 y <code>MILLA INTERNO</code>.</td>
+        <td><span class="sev s-a">Alto</span> Puede aplicar a todo el tráfico, incluido el de gestión. Confirmar con el tercero para qué es.</td></tr>
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52</td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Rutas SD-WAN <code>FRAGUA_AXTEL</code> y <code>FRAGUA_REDIT</code>: se agregó el destino <code>172.28.101.250</code> (NAS de La Fragua).</td>
+        <td>Relacionado con el caso NAS .104.186.</td></tr>
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52</td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Regla nueva #12 <code>BMX_Calidad_Coordinador</code>: LAN→WAN, origen objeto <code>BMX_Calidad_Coordinador</code>, web policy <code>NW_BMX CALIDAD COORDINADOR</code>.</td>
+        <td>Sin observaciones. Reglas: 29 → 30.</td></tr>
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52</td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>BMX_supervisor</code> (#13) se borró y se creó <code>BMX_Supervisor</code> en la #9, con el mismo origen (<code>supervisor</code>, <code>bmx</code>, <code>supervisorBMX</code>) y la misma policy <code>NW_BMX_Supervisor</code>. <code>BMX_Coordinador</code> subió de #15 a #10 y perdió <code>192.168.104.167</code>.</td>
+        <td>La .104.167 ya no está en Coordinador. Confirmar que fue intencional.</td></tr>
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52</td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Web policy <code>BMX_Coordinador</code>: se agregó la categoría <code>#8543</code> al Allow R1.</td>
+        <td>Es la propuesta del caso Call Blaster en OP3-163 (05-11). Ya no hay que aplicarla. Falta prueba del usuario.</td></tr>
+      <tr data-fw="FW3"><td class="date">05-11 → 17-11 18:52</td><td class="fwc">FW3</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Web policies reorganizadas: <code>NW_BMX CALIDAD COORDINADOR</code> pasó de 5 a 3 reglas internas y sumó <code>auronix</code> al Allow. <code>NW_SECURED AGENTE</code> pasó de 6 a 2 (todos los Deny arriba, un Allow abajo). <code>NW_SECURED COORDINADOR</code> sumó <code>portal-sms</code>.</td>
+        <td>Mismas categorías, salvo <code>auronix</code> y <code>portal-sms</code>. En Secured Agente, Movilidad y NUXIBA ahora se evalúan después de todos los Deny.</td></tr>
+
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59<span class="window">caso svrmillabmx, 17-11</span></td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>ALLOW_FW2M_VPN_OUT_AXTEL</code> (#3): + <code>192.168.103.31</code> en el origen (DSCP 0 → -1). <code>Sistemas coordinacion</code> (#4): + <code>svrmillabmx</code>, <code>192.168.100.87</code>, <code>svr192.168.100.87</code>. <code>SistemasCoordinacion2</code>: + <code>svrmillabmx</code>.</td>
+        <td><span class="sev s-m">Medio</span> No tiene efecto: el tráfico a 192.168.100.x va por el túnel de FW2M y no pasa por FW2. Además, poner el servidor como origen no le da acceso a la .103.31. La solución es un registro A en el DC.</td></tr>
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59</td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Regla nueva #13 <code>prueba</code>, <b>deshabilitada</b>: LAN→WAN, origen <code>192.168.103.156</code>, sin filtro web.</td>
+        <td>Prueba del caso ne16 (.103.156, 10-11). Borrarla si ya no se usa.</td></tr>
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59</td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>Carteras_Especiales_Coordinador</code> subió de #89 a #14, antes de <code>BMX_AGENTE_DIGITAL</code>/<code>BMX_SUPERVISOR</code>.</td>
+        <td>Su filtro web ahora sí se aplica. Ver el cambio de su policy en la fila siguiente.</td></tr>
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59</td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td>Web policy <code>Carteras Especiales Coordinador</code>: los Allow subieron por encima del Deny <code>block</code>. R1 sumó <code>Information Technology</code>, <code>neored</code> y <code>Ne16</code>. La regla <code>neored</code> (R6) quedó deshabilitada.</td>
+        <td><span class="sev s-a">Alto</span> <code>Information Technology</code> es una categoría amplia y ahora va antes del Deny. Confirmar si se pidió.</td></tr>
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59</td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>Didi Agente</code>: + <code>192.168.103.49</code> en el origen. Bajó de #72 a #43, después de <code>Didi Administrativo</code>.</td>
+        <td>Ahora va antes de <code>Vip.</code> (#55): la .61 sale por Didi Agente. Sigue después de las reglas BMX, así que no tiene efecto real.</td></tr>
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59</td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>Block_URL</code> (deshabilitada antes y después): se borraron todas sus exclusiones (21 destinos como Zoom, Dropbox, Infonavit y HSBCnet; unos 25 orígenes como <code>Solicitud#3106</code>).</td>
+        <td>No tiene efecto mientras esté deshabilitada. Si se activa, bloquearía a quienes antes estaban exceptuados.</td></tr>
+      <tr data-fw="FW2"><td class="date">05-11 → 17-11 18:59</td><td class="fwc">FW2</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>Vip.</code> perdió <code>Solicitud301026</code> (el objeto agregado por fuera el 30-10). En <code>Monitorista_Auditoria</code>, <code>Solicitud#5233</code> y <code>solicitud#5233</code> se reemplazaron por <code>solicitud #5233-1</code>.</td>
+        <td>Limpieza de objetos. Verificar que la IP de #5233 siga incluida.</td></tr>
+
+      <tr data-fw="FW2M"><td class="date">17-11 13:37</td><td class="fwc">FW2M</td><td><span class="tag t-loc">Lectura</span></td>
+        <td>Lectura de <code>FirewallRule</code> para el caso svrmillabmx (.103.31 → 192.168.100.87).</td>
+        <td>245 reglas, sin cambios desde el 10-11 16:02.</td></tr>
+      <tr data-fw="FW2M Otros"><td class="date">17-11</td><td class="fwc">FW2M · DC</td><td><span class="tag t-det">Detectado</span></td>
+        <td><code>svrmillabmx</code> = <code>192.168.100.87</code>. No está en el DNS del DC (DC.MILLA.LOCAL 192.168.100.240) ni en FW2/FW2M. Solo resuelve por LLMNR dentro de la LAN de servidores.</td>
+        <td>Solución propuesta: registro A en el DC (o hosts en la .103.31). No se tocó ningún firewall.</td></tr>
+      <tr data-fw="Otros"><td class="date">17-11 16:29–16:47</td><td class="fwc">Stack Cisco</td><td><span class="tag t-ver">Verificar</span></td>
+        <td>Ticket "desbloquear puerto 41 del switch 2". <code>Gi2/0/41</code> estaba connected y limpio (MAC a4bb.6dc6.89df). En la captura de las 16:47 se ve <code>no shutdown</code> enviado a <code>Gi1/0/41</code>, que queda en <i>notconnect</i>.</td>
+        <td><span class="sev s-c">Verificar</span> Gi1/0/41 estaba apagado a propósito. La nota del caso dice que se dejó así, pero la captura lo muestra habilitado. Confirmar el estado y si se guardó con <code>write memory</code>. El problema de internet no era el switch.</td></tr>
+      <tr data-fw="FW3 FW3M FW2"><td class="date">17-11 18:52–19:01</td><td class="fwc">FW3 · FW3M · FW2</td><td><span class="tag t-loc">Lectura</span></td>
+        <td>Respaldo incremental de solo lectura (9 entidades por equipo: reglas, web policies, URL groups, NAT, rutas, SD-WAN, IPsec, ACL de gestión e interfaces) y comparación objeto por objeto.</td>
+        <td>FW3M: sin cambios desde el 11-11 12:46. FW3 y FW2: cambios listados arriba. NAT, IPsec, ACL e interfaces sin cambios reales.</td></tr>
+      <tr data-fw="FW1"><td class="date">05-11 → 17-11 19:03</td><td class="fwc">FW1</td><td><span class="tag t-3ro">Tercero</span></td>
+        <td><code>ALLOW_FULL_SRV</code> (#4): se agregó <code>192.168.100.29</code> al origen.</td>
+        <td><span class="sev s-m">Medio</span> Es otra excepción de navegación libre (el 05-11 ya se había sumado la .100.33). Confirmar quién la pidió.</td></tr>
+      <tr data-fw="FW1 FW2M"><td class="date">17-11 19:03–19:08</td><td class="fwc">FW1 · FW2M</td><td><span class="tag t-loc">Lectura</span></td>
+        <td>Respaldo incremental de solo lectura de las mismas 9 entidades y comparación objeto por objeto.</td>
+        <td>FW2M: <b>sin cambios</b> en las 9 entidades. FW1: solo el cambio de la fila anterior; en IPsec cambió un campo de estado, sin cambios en los túneles.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" id="count"></p>
+</section>
+
+<section>
+  <h2>Propuestas del reporte anterior: cómo quedaron</h2>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Equipo</th><th>Propuesta (11-11)</th><th>Estado al 17-11</th></tr></thead>
+    <tbody>
+      <tr><td class="fwc">FW3</td><td>Recuperar la gestión de 10.10.5.252 (ruta de retorno, vNIC o ACL)</td><td><span class="sev s-m">Resuelto</span> por un tercero con la ruta <code>10.10.81.0/24 → 10.10.5.2</code>. El ACL de gestión y las interfaces no cambiaron.</td></tr>
+      <tr><td class="fwc">FW3</td><td>Call Blaster: <code>#8543</code> en <code>BMX_Coordinador</code></td><td><span class="sev s-m">Aplicado</span> por un tercero. Falta prueba del usuario en OP3-163.</td></tr>
+      <tr><td class="fwc">FW3M</td><td>Limpiar reglas <code>test</code> / <code>Clone_…</code> (#1-4)</td><td><span class="sev s-a">Abierto</span> Siguen igual que el 11-11.</td></tr>
+      <tr><td class="fwc">FW2M</td><td>Bypass de estado para epcentral (.103.34-36 ↔ .49)</td><td><span class="sev s-a">Abierto</span> Reglas de FW2M sin cambios.</td></tr>
+      <tr><td class="fwc">FW2</td><td>Corregir <code>BMX_AGENTE_DIGITAL</code> / <code>BMX_SUPERVISOR</code></td><td><span class="sev s-c">Abierto</span> Siguen activas, ahora en #22 y #23.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Pendientes</h2>
+  <div class="two">
+    <div class="card">
+      <h3>Urgentes</h3>
+      <ul class="check">
+        <li>Confirmar con el tercero para qué es la SD-WAN <code>SALIDAg</code> de FW3 y limitar su origen o interfaz.</li>
+        <li>Revisar <code>Information Technology</code> en <code>Carteras Especiales Coordinador</code> (FW2), que ahora sí filtra.</li>
+        <li>Verificar el estado de <code>Gi1/0/41</code> en el stack y regresarlo a shutdown si corresponde.</li>
+        <li>Respaldo completo de FW3 ahora que hay gestión. Hoy solo se respaldaron 9 entidades.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Seguimiento</h3>
+      <ul class="check">
+        <li>svrmillabmx: registro A <code>svrmillabmx → 192.168.100.87</code> en el DC. Quitar de FW2 los objetos agregados que no tienen efecto.</li>
+        <li>Confirmar el retiro de <code>192.168.104.167</code> de <code>BMX_Coordinador</code> (FW3).</li>
+        <li>Borrar la regla deshabilitada <code>prueba</code> (FW2).</li>
+        <li>Prueba del usuario: Call Blaster en OP3-163.</li>
+        <li>Siguen abiertos los pendientes del 11-11: BMX_* en FW2, publicaciones de FW1, administración WAN de FW3M y acceso a FW1M.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>Generado el 17-11-2026 a las 19:08. Para este reporte no se aplicó ningún cambio en los firewalls: solo lecturas (Get) por API.</div>
+  <div>Comparación objeto por objeto contra el respaldo anterior. Las listas se comparan como conjuntos, así que un cambio de orden no cuenta como cambio. Respaldos en <span class="mono">.secretos\firewalls\api_dumps\&lt;FW&gt;\&lt;Entidad&gt;\20261117_*.xml</span>.</div>
+  <div>Base de comparación: FW2 y FW3 → 05-11 (no hubo respaldos intermedios). FW3M → 11-11 12:46. FW2M → 10-11 16:02. FW1 → 05-11.</div>
+</footer>
+
+</div>
+<script>
+(function(){
+  var chips = document.querySelectorAll('.chip');
+  var rows = document.querySelectorAll('#timeline tbody tr');
+  var count = document.getElementById('count');
+  function apply(f){
+    var n = 0;
+    rows.forEach(function(r){
+      var show = f === 'all' || (' ' + r.dataset.fw + ' ').indexOf(' ' + f + ' ') !== -1;
+      r.hidden = !show; if (show) n++;
+    });
+    chips.forEach(function(c){ c.setAttribute('aria-pressed', c.dataset.f === f ? 'true' : 'false'); });
+    count.textContent = n + ' de ' + rows.length + ' registros';
+  }
+  chips.forEach(function(c){ c.addEventListener('click', function(){ apply(c.dataset.f); }); });
+  apply('all');
+})();
+</script>
+</body>
+</html>
