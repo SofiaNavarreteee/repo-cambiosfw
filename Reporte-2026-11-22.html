@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cambios Firewalls 22-11</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: informe de una columna; resumen arriba, bitácora filtrable por equipo, luego hallazgos y pendientes */
+:root{
+  color-scheme: light;
+  --bg:#f5f7f8; --panel:#ffffff; --fg:#17232b; --muted:#5a6b76; --line:#d8e0e5;
+  --accent:#0f6e7a; --accent-soft:#e2f1f3;
+  --ok:#2f7d4f; --ok-soft:#e3f2e8;
+  --warn:#9a6500; --warn-soft:#fbf0d9;
+  --crit:#b3261e; --crit-soft:#fbe4e2;
+  --info:#3c5ea8; --info-soft:#e6ecf8;
+  --font-body:"IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  --font-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f171c; --panel:#162229; --fg:#e3eaee; --muted:#93a5b0; --line:#2a3a44;
+  --accent:#4fb8c4; --accent-soft:#163a40;
+  --ok:#6cc48f; --ok-soft:#173826; --warn:#e0b04f; --warn-soft:#3a2e12;
+  --crit:#f08a82; --crit-soft:#41201d; --info:#8fa9e6; --info-soft:#1f2a45; color-scheme: dark }}
+:root[data-theme="dark"]{
+  --bg:#0f171c; --panel:#162229; --fg:#e3eaee; --muted:#93a5b0; --line:#2a3a44;
+  --accent:#4fb8c4; --accent-soft:#163a40;
+  --ok:#6cc48f; --ok-soft:#173826; --warn:#e0b04f; --warn-soft:#3a2e12;
+  --crit:#f08a82; --crit-soft:#41201d; --info:#8fa9e6; --info-soft:#1f2a45; color-scheme: dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-body)}
+.wrap{max-width:1120px;margin:0 auto;padding-block:32px 64px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:1.9rem;font-weight:700}
+h2{font-size:1.3rem;font-weight:600;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h3{font-size:1.02rem;font-weight:600}
+p{margin:0;max-width:72ch}
+code,.mono{font-family:var(--font-mono);font-size:.86em}
+code{background:var(--accent-soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.eyebrow{font:500 .75rem var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.muted{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-direction:column;gap:10px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 20px;color:var(--muted);font-size:.9rem}
+.meta b{color:var(--fg);font-weight:500}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kpi .n{font:600 1.8rem var(--font-mono);font-variant-numeric:tabular-nums}
+.kpi .l{font-size:.85rem;color:var(--muted)}
+.kpi.k-ok .n{color:var(--ok)} .kpi.k-warn .n{color:var(--warn)} .kpi.k-crit .n{color:var(--crit)} .kpi.k-info .n{color:var(--info)}
+
+.callout{border-left:3px solid var(--warn);background:var(--warn-soft);padding:12px 16px;border-radius:0 6px 6px 0;display:flex;flex-direction:column;gap:6px}
+.callout.crit{border-color:var(--crit);background:var(--crit-soft)}
+
+.fwmap{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto}
+.fwgrid{display:grid;grid-template-columns:repeat(3,minmax(200px,1fr));gap:10px;min-width:640px}
+.fw{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;font-size:.86rem}
+.fw .name{font:600 .95rem var(--font-mono)}
+.fw.down{border-color:var(--crit);background:var(--crit-soft)}
+.fw.nodata{border-style:dashed}
+.fw .st{font-size:.78rem;font-weight:600}
+.fw.down .st{color:var(--crit)} .fw.up .st{color:var(--ok)} .fw.nodata .st{color:var(--muted)}
+
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.filters span{font-size:.85rem;color:var(--muted);margin-right:4px}
+.chip{font:500 .82rem var(--font-mono);border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:5px 11px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.tbl{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font:600 .72rem var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--bg);position:sticky;top:0}
+tr:last-child td{border-bottom:0}
+td.date{font-family:var(--font-mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.fwc{font:600 .85rem var(--font-mono);white-space:nowrap}
+.tl{min-width:860px}
+
+.tag{display:inline-block;font:600 .7rem var(--font-mono);padding:2px 8px;border-radius:4px;white-space:nowrap;letter-spacing:.02em}
+.t-api{background:var(--ok-soft);color:var(--ok)}
+.t-gui{background:var(--info-soft);color:var(--info)}
+.t-3ro{background:var(--warn-soft);color:var(--warn)}
+.t-det{background:var(--crit-soft);color:var(--crit)}
+.t-loc{background:var(--accent-soft);color:var(--accent)}
+.sev{display:inline-block;font:600 .7rem var(--font-mono);padding:2px 8px;border-radius:4px;white-space:nowrap}
+.s-c{background:var(--crit-soft);color:var(--crit)} .s-a{background:var(--warn-soft);color:var(--warn)}
+.s-m{background:var(--info-soft);color:var(--info)}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.82rem;color:var(--muted)}
+.legend div{display:flex;gap:6px;align-items:center}
+
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+ul.list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+ul.check{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+ul.check li{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start}
+ul.check li::before{content:"";width:12px;height:12px;border:1.5px solid var(--muted);border-radius:3px;margin-top:5px}
+footer{font-size:.82rem;color:var(--muted);border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:4px}
+@media (max-width:520px){ h1{font-size:1.5rem} }
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+.t-ver{background:var(--crit-soft);color:var(--crit);outline:1px dashed var(--crit)}
+.window{font-size:.78rem;color:var(--muted);display:block;margin-top:2px;font-family:var(--font-body)}
+.t-me{background:var(--ok-soft);color:var(--ok);outline:1px solid var(--ok)}
+
+a{color:var(--accent)} tr[hidden]{display:none}
+@media print{.filters{display:none} .tbl{overflow:visible}}</style></head><body><div class="wrap">
+<header><span class="eyebrow">Sándwich MEYAJ · Sophos SFOS · Reporte 6</span><h1>Cambios en firewalls del 22-11-2026</h1><p class="muted">Este día no hay cambios con hora registrada. Hubo accesos a consola en FW1, FW2 y FW3, y la configuración quedó igual entre las 23:45 y las 00:32 del 23-11.</p>
+<div class="meta"><span>Periodo <b>22-11-2026 00:00 → 22-11-2026 23:59:59</b></span><span>Horas <b>locales (UTC-6)</b></span></div>
+<div class="meta"><span>Fuentes Bitácora <code>/log/configuration-audit.log</code> (FW1, FW2, FW3, con MD5 verificado), log de consola <code>apache_access.log</code> (FW1, FW2, FW3) y respaldo API de 26 entidades en 5 equipos (22-11 23:42–23:45 y 23-11 00:29–00:32).</span></div><div class="meta"><a href="Reporte-2026-11-21.html">← Reporte 21-11</a> · <a href="index.html">Índice</a></div></header>
+<section><h2>Resumen</h2><div class="kpis"><div class="kpi k-ok"><span class="n">0</span><span class="l">Eventos en bitácora de auditoría</span></div><div class="kpi k-ok"><span class="n">0</span><span class="l">Cambios fechados con certeza en este día</span></div><div class="kpi k-info"><span class="n">9</span><span class="l">Sesiones de consola registradas</span></div><div class="kpi k-warn"><span class="n">5</span><span class="l">Cambios con ventana que incluye este día</span></div></div><div class="callout"><h3>Sin cambios registrados, con dos puntos por confirmar</h3><p>La última escritura en bitácora fue el 21-11 a las 19:23:44. La ruta <code>NAT</code> de FW3M perdió su origen <code>LAN_104</code> entre el 20-11 13:14 y el 22-11 23:43, y no hay forma de saber qué día. El túnel <code>MCTOMMILLANAT</code> de FW1 cambió de estado en una ventana similar.</p></div></section>
+<section><h2>Estado de los equipos en este periodo</h2><div class="fwmap"><div class="fwgrid"><div class="fw up"><span class="name">FW1 · 10.10.5.250</span><span>Borde Servidores</span><span class="st">Acceso OK · estado de túnel</span></div><div class="fw up"><span class="name">FW2 · 10.10.5.251</span><span>Borde Milla (.103 / .106)</span><span class="st">Acceso OK · sin eventos</span></div><div class="fw up"><span class="name">FW3 · 10.10.5.252</span><span>Borde Banamex (.104)</span><span class="st">Acceso OK · sin cambios</span></div><div class="fw nodata"><span class="name">FW1M · ¿10.10.5.4?</span><span>Interno Servidores</span><span class="st">Sin acceso · no revisado</span></div><div class="fw up"><span class="name">FW2M · 10.10.5.2</span><span>Interno Milla</span><span class="st">Acceso OK · sin cambios detectados</span></div><div class="fw up"><span class="name">FW3M · 10.10.5.3</span><span>Interno Banamex (.104)</span><span class="st">Acceso OK · ver ruta NAT</span></div></div></div></section>
+<section><h2>Cambios con fecha, hora y usuario</h2><div class="legend"><div><span class="tag t-3ro">Tercero</span> usuario, IP y hora exactos de la bitácora del equipo</div></div><p>La bitácora de auditoría de FW1, FW2 y FW3 <b>no tiene ningún evento</b> en este periodo.</p></section>
+<section><h2>Cambios detectados en este periodo, sin hora exacta</h2><p class="muted">Se encontraron al comparar respaldos. La ventana indica entre qué momentos ocurrieron.</p><div class="tbl"><table class="tl"><thead><tr><th>Ventana</th><th>Equipo</th><th>Cambio detectado</th><th>Autor / evidencia</th><th>Efecto</th></tr></thead><tbody><tr><td class="date">20-11 13:14 → 22-11 23:43</td><td class="fwc">FW3M</td><td>Ruta SD-WAN <code>NAT</code>: se quitó <code>LAN_104</code> del origen (ahora sin origen).</td><td>Sin bitácora en FW3M; no se puede saber quién ni qué día.</td><td>La ruta tiene <code>Status=0</code>. Si se habilita, aplicaría a cualquier origen.</td></tr><tr><td class="date">19-11 22:34 → 22-11 23:43</td><td class="fwc">FW1</td><td>Túnel <code>MCTOMMILLANAT</code>: <code>Status</code> pasó de 1 a 3.</td><td>La bitácora no registra VPN.</td><td>Puede ser estado del túnel y no un cambio de configuración.</td></tr></tbody></table></div></section>
+<section><h2>Diferencias contra copias antiguas (no fechables)</h2><p class="muted">Estas entidades solo tenían copia del 05-11, así que estos cambios pudieron ocurrir antes del periodo. No se cuentan como cambios del 20 al 22-11.</p><div class="card"><ul class="list"><li><b>Filtros de aplicaciones (los 5 equipos):</b> aparecen <code>Cloudflare Quick Tunnel Access</code>, <code>Quick Tunnel Setup</code> y <code>Tunnel Connector</code> en varias políticas. El patrón es compatible con una actualización de firmas de Sophos, pero no está confirmado.</li><li><b>FW2:</b> la política <code>Carteras Especiales Coordinador</code> perdió una regla de aplicaciones de Google.</li><li><b>FW3:</b> en la zona WAN aparece <code>IPsec = Enable</code>.</li><li><b>FW2M:</b> nueva reserva DHCP en <code>WIFI</code>: <code>VIP</code>, A8:2B:DD:34:4C:50 → 192.168.103.60.</li></ul></div></section>
+<section><h2>Cambios que también pudieron ocurrir este día</h2><p class="muted">Su ventana incluye este día, pero la evidencia no permite fijarlos aquí. Se detallan en el reporte indicado.</p><div class="card"><ul class="list"><li><b>FW2</b> (19-11 22:42 → 22-11 23:43): Alta del grupo de URL <code>Bloqueo_Didi</code>: 34.200.86.193, 52.84.199.53, gemini.com, www.gemini.com, sears.com.mx, splashtop.com. <a href="Reporte-2026-11-21.html">Ver reporte</a></li><li><b>FW2</b> (19-11 22:42 → 22-11 23:43): Web policy <code>Didi Administrativo</code>: acción por defecto de <b>Allow a Deny</b>. Nueva regla de bloqueo al inicio con categorías y grupos, incluidos Microsoft, <code>login.microsoft</code>, Splashtop, Gemini y <code>Bloqueo_Didi</code>. Se agregaron a la regla de permitidos office 365, outlook, Zoom y GeoVictoria. <a href="Reporte-2026-11-21.html">Ver reporte</a></li><li><b>FW2</b> (19-11 22:42 → 22-11 23:43): Web policy <code>Didi Agente</code>: acción por defecto de <b>Allow a Deny</b>. La regla de bloqueo pasó al inicio y ahora incluye Microsoft, <code>login.microsoft</code>, WhatsApp, Social Networking, Uncategorized y Copilot, entre otras. <a href="Reporte-2026-11-21.html">Ver reporte</a></li></ul></div></section>
+<section><h2>Actividad en consola web</h2><p class="muted">Quién entró a cada firewall y qué editores abrió. Es evidencia de acceso, no de cambio.</p><div class="tbl"><table class="tl"><thead><tr><th>Actividad</th><th>Equipo</th><th>IP</th><th>Peticiones</th><th>Editores abiertos</th></tr></thead><tbody><tr><td class="date">06:59:30 – 15:02:17</td><td class="fwc">FW2</td><td><code>10.10.81.146</code><span class="window">marco.gutierrez (IP habitual)</span></td><td class="mono">531</td><td>NetworkPolicyEdit, WebFilterCategoryEdit</td></tr><tr><td class="date">07:01:25 – 15:01:54</td><td class="fwc">FW3</td><td><code>10.10.81.146</code><span class="window">marco.gutierrez (IP habitual)</span></td><td class="mono">405</td><td>Sin editores abiertos</td></tr><tr><td class="date">13:03:34 – 13:04:18</td><td class="fwc">FW1</td><td><code>10.10.81.146</code><span class="window">marco.gutierrez (IP habitual)</span></td><td class="mono">33</td><td>Sin editores abiertos</td></tr><tr><td class="date">22:53:09 – 22:56:55</td><td class="fwc">FW1</td><td><code>10.10.81.140</code><span class="window">admin, cuenta compartida (IP de tercero)</span></td><td class="mono">93</td><td>Sin editores abiertos</td></tr><tr><td class="date">22:53:13 – 22:58:09</td><td class="fwc">FW2</td><td><code>10.10.81.140</code><span class="window">admin, cuenta compartida (IP de tercero)</span></td><td class="mono">141</td><td>Sin editores abiertos</td></tr><tr><td class="date">22:53:17 – 22:57:34</td><td class="fwc">FW3</td><td><code>10.10.81.140</code><span class="window">admin, cuenta compartida (IP de tercero)</span></td><td class="mono">80</td><td>Sin editores abiertos</td></tr><tr><td class="date">23:41:17 – 23:42:17</td><td class="fwc">FW1</td><td><code>10.10.81.147</code><span class="window">tu PC</span></td><td class="mono">26</td><td>Sin editores abiertos</td></tr><tr><td class="date">23:41:18 – 23:43:12</td><td class="fwc">FW2</td><td><code>10.10.81.147</code><span class="window">tu PC</span></td><td class="mono">26</td><td>Sin editores abiertos</td></tr><tr><td class="date">23:41:20 – 23:43:29</td><td class="fwc">FW3</td><td><code>10.10.81.147</code><span class="window">tu PC</span></td><td class="mono">26</td><td>Sin editores abiertos</td></tr></tbody></table></div></section>
+<section><h2>Alcance y límites de la evidencia</h2><div class="card"><ul class="list">
+<li><b>FW1M no se revisó:</b> sigue sin acceso desde esta PC.</li>
+<li><b>FW2M y FW3M no tienen bitácora disponible:</b> sus cambios solo se detectan comparando respaldos, sin usuario ni hora. FW2M rechazó el acceso SSH y FW3M no tiene SSH.</li>
+<li><b>La bitácora de FW1, FW2 y FW3 no registra</b> web policies, grupos de URL, usuarios, rutas ni VPN. Esos cambios aparecen como "detectados" con su ventana de fechas.</li>
+<li><b>El log de consola da IP y hora, no usuario ni contenido guardado.</b> Una sesión o un editor abierto no prueba que se haya hecho un cambio. La relación IP → usuario viene de la bitácora de auditoría.</li>
+<li><b>IP host y FQDN host de FW2M y FW3M:</b> no había copia anterior, así que aquí no se pudieron comparar. Desde el 22-11 ya existe una base.</li>
+<li><b>Las horas son las del reloj de cada firewall</b>, en hora local (UTC-6).</li>
+</ul></div></section>
+<footer><span>Generado el 23-11-2026. Para este reporte no se aplicó ningún cambio en los firewalls: solo lecturas (Get por API y comandos de lectura por SSH).</span><span>Las lecturas de este reporte aparecen en los logs desde <code>10.10.81.147</code> el 22-11 a partir de las 23:41 y el 23-11 a partir de las 00:29.</span></footer>
+</div></body></html>
