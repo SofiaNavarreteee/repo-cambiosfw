@@ -10,3 +10,4 @@
 * [Reporte 23 de Noviembre 2026](https://htmlpreview.github.io/?https://github.com/SofiaNavarreteee/repo-cambiosfw/blob/main/Reporte-2026-11-23.html)
 *  [Reporte 24 de Noviembre 2026](https://htmlpreview.github.io/?https://github.com/SofiaNavarreteee/repo-cambiosfw/blob/main/Reporte-2026-11-24.html)
 * [Reporte 25 de Noviembre 2026](https://htmlpreview.github.io/?https://github.com/SofiaNavarreteee/repo-cambiosfw/blob/main/Reporte-2026-11-25.html)
+* [Reporte 26 de Noviembre 2026](https://htmlpreview.github.io/?https://github.com/SofiaNavarreteee/repo-cambiosfw/blob/main/Reporte-2026-11-26.html)
